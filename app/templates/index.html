@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Docker Flask Practice</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Docker + Python + HTML/JS 練習</h1>
+      <p>名前を入力して Python API にリクエストします。</p>
+
+      <div class="row">
+        <input id="nameInput" type="text" placeholder="例: Taro" />
+        <button id="helloBtn">送信</button>
+      </div>
+
+      <p id="result">ここに結果が表示されます</p>
+    </main>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>

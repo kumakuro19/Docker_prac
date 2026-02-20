@@ -1,0 +1,11 @@
+services:
+  web:
+    build: .
+    container_name: flask_practice_web
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./app:/app/app
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1

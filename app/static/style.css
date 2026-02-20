@@ -1,0 +1,37 @@
+:root {
+  font-family: sans-serif;
+  color: #222;
+  background: #f7f7f7;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 680px;
+  margin: 48px auto;
+  background: #fff;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+input,
+button {
+  font-size: 16px;
+  padding: 10px 12px;
+}
+
+input {
+  flex: 1;
+}
+
+button {
+  cursor: pointer;
+}
