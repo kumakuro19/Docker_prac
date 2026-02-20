@@ -1,10 +1,16 @@
 import io
+import posixpath
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from flask import Flask, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
+MAX_SOURCE_BYTES = 1024 * 1024
+MAX_ZIP_BYTES = 20 * 1024 * 1024
 
 
 @app.get("/")
@@ -12,58 +18,197 @@ def index():
     return render_template("index.html")
 
 
-@app.post("/api/convert")
-def convert():
-    uploaded = request.files.get("py_file")
-    if not uploaded or not uploaded.filename:
-        return jsonify({"error": "Pythonファイル(.py)を選択してください。"}), 400
+def _convert_github_url_to_raw(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("URLは http/https のみ対応しています。")
 
-    filename = Path(uploaded.filename).name
-    if not filename.lower().endswith(".py"):
-        return jsonify({"error": ".py ファイルのみ対応しています。"}), 400
+    host = parsed.netloc.lower()
+    path = parsed.path.strip("/")
+    if host == "raw.githubusercontent.com":
+        return url
+    if host != "github.com":
+        raise ValueError("GitHub URLのみ対応しています。")
 
-    source = uploaded.read()
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < 5 or parts[2] != "blob":
+        raise ValueError("GitHubの .py ファイルURL（.../blob/...）を指定してください。")
+    if not parts[-1].lower().endswith(".py"):
+        raise ValueError(".py ファイルのURLを指定してください。")
+
+    user, repo, _, branch = parts[:4]
+    file_path = "/".join(parts[4:])
+    return f"https://raw.githubusercontent.com/{user}/{repo}/{branch}/{file_path}"
+
+
+def _read_source_from_url(github_url: str):
+    raw_url = _convert_github_url_to_raw(github_url)
+    filename = Path(urlparse(raw_url).path).name
+    try:
+        with urlopen(raw_url, timeout=15) as response:
+            source = response.read(MAX_SOURCE_BYTES + 1)
+    except HTTPError as exc:
+        raise ValueError(f"URL取得に失敗しました: HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise ValueError("URL取得に失敗しました。URLを確認してください。") from exc
+
+    if len(source) > MAX_SOURCE_BYTES:
+        raise ValueError("ファイルサイズ上限(1MB)を超えています。")
     if not source:
-        return jsonify({"error": "空ファイルは変換できません。"}), 400
+        raise ValueError("URL先のファイルが空です。")
+    return filename, source
 
-    base_name = Path(filename).stem
+
+def _zip_write_text(zf: zipfile.ZipFile, path: str, content: str, executable: bool = False):
+    info = zipfile.ZipInfo(path)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    mode = 0o755 if executable else 0o644
+    info.external_attr = mode << 16
+    zf.writestr(info, content)
+
+
+def _safe_member_name(name: str) -> str:
+    normalized = name.replace("\\", "/").strip("/")
+    cleaned = posixpath.normpath(normalized)
+    if cleaned in {"", "."}:
+        return ""
+    if cleaned.startswith("../") or cleaned == ".." or cleaned.startswith("/"):
+        return ""
+    return cleaned
+
+
+def _infer_entry_from_project(entries: list[str]) -> str:
+    py_files = [p for p in entries if p.lower().endswith(".py")]
+    if not py_files:
+        raise ValueError("ZIP内に .py ファイルが見つかりません。")
+    if len(py_files) == 1:
+        return py_files[0]
+    if "main.py" in py_files:
+        return "main.py"
+    if "src/main.py" in py_files:
+        return "src/main.py"
+    raise ValueError(
+        "起動対象の .py を特定できません。main_script に例: src/main.py のように指定してください。"
+    )
+
+
+def _load_project_from_zip(project_zip, main_script: str):
+    if not project_zip or not project_zip.filename:
+        raise ValueError("ZIPファイルを選択してください。")
+
+    zip_name = Path(project_zip.filename).name
+    if not zip_name.lower().endswith(".zip"):
+        raise ValueError("プロジェクトは .zip 形式でアップロードしてください。")
+
+    payload = project_zip.read(MAX_ZIP_BYTES + 1)
+    if len(payload) > MAX_ZIP_BYTES:
+        raise ValueError("ZIPサイズ上限(20MB)を超えています。")
+    if not payload:
+        raise ValueError("空のZIPは変換できません。")
+
+    try:
+        source_zip = zipfile.ZipFile(io.BytesIO(payload), "r")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("ZIPファイルの形式が不正です。") from exc
+
+    files: list[tuple[str, bytes]] = []
+    with source_zip:
+        for member in source_zip.infolist():
+            if member.is_dir():
+                continue
+            safe_name = _safe_member_name(member.filename)
+            if not safe_name:
+                continue
+            files.append((safe_name, source_zip.read(member)))
+
+    if not files:
+        raise ValueError("ZIP内に有効なファイルが見つかりません。")
+
+    all_paths = [p for p, _ in files]
+    entry = main_script.strip().replace("\\", "/").strip("/") if main_script else ""
+    if entry:
+        if entry not in all_paths:
+            raise ValueError(f"main_script がZIP内に見つかりません: {entry}")
+        if not entry.lower().endswith(".py"):
+            raise ValueError("main_script には .py ファイルを指定してください。")
+    else:
+        entry = _infer_entry_from_project(all_paths)
+
+    base_name = Path(zip_name).stem
+    return base_name, files, entry
+
+
+def _make_output_zip(base_name: str, files: list[tuple[str, bytes]], entry: str):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{base_name}/src/{filename}", source)
-        zf.writestr(
+        for rel_path, content in files:
+            zf.writestr(f"{base_name}/project/{rel_path}", content)
+
+        entry_unix = entry
+        entry_win = entry.replace("/", "\\")
+        _zip_write_text(
+            zf,
             f"{base_name}/run.sh",
             f"""#!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")"
-python3 "src/{filename}" "$@"
+cd "$(dirname "$0")/project"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 が見つかりません。先に Python3 をインストールしてください。"
+  exit 1
+fi
+python3 "{entry_unix}" "$@"
 """,
+            executable=True,
         )
-        zf.writestr(
+        _zip_write_text(
+            zf,
             f"{base_name}/run.bat",
             f"""@echo off
 setlocal
-cd /d %~dp0
-python "src\\{filename}" %*
+cd /d %~dp0\\project
+where py >nul 2>nul
+if %ERRORLEVEL%==0 (
+  py -3 "{entry_win}" %*
+  exit /b %ERRORLEVEL%
+)
+
+where python >nul 2>nul
+if %ERRORLEVEL%==0 (
+  python "{entry_win}" %*
+  exit /b %ERRORLEVEL%
+)
+
+echo Python launcher (py) または python が見つかりません。
+exit /b 1
 """,
         )
-        zf.writestr(
+        _zip_write_text(
+            zf,
             f"{base_name}/build_exe.bat",
             f"""@echo off
 setlocal
-cd /d %~dp0
-python -m pip install pyinstaller
-pyinstaller --onefile "src\\{filename}" --name "{base_name}"
-echo Build finished. Output: dist\\{base_name}.exe
+cd /d %~dp0\\project
+where py >nul 2>nul
+if %ERRORLEVEL%==0 (
+  py -3 -m pip install pyinstaller
+  py -3 -m PyInstaller --onefile "{entry_win}" --name "{base_name}"
+) else (
+  python -m pip install pyinstaller
+  python -m PyInstaller --onefile "{entry_win}" --name "{base_name}"
+)
+echo Build finished. Output: project\\dist\\{base_name}.exe
 """,
         )
-        zf.writestr(
+        _zip_write_text(
+            zf,
             f"{base_name}/README_CONVERTED.md",
             f"""# Converted Package: {base_name}
 
+Entry script: `{entry_unix}`
+
 ## Raspberry Pi (Linux)
 ```bash
-chmod +x run.sh
-./run.sh
+bash run.sh
 ```
 
 ## Windows
@@ -75,10 +220,61 @@ run.bat
 ```bat
 build_exe.bat
 ```
+
+## Note
+- `project/` 配下に元ファイル構成を保持しています。
+- 依存ライブラリがある場合は、事前に環境へインストールしてください。
 """,
         )
 
     zip_buffer.seek(0)
+    return zip_buffer
+
+
+@app.post("/api/convert")
+def convert():
+    py_file = request.files.get("py_file")
+    project_zip = request.files.get("project_zip")
+    github_url = request.form.get("github_url", "").strip()
+    main_script = request.form.get("main_script", "").strip()
+
+    try:
+        if project_zip and project_zip.filename:
+            base_name, files, entry = _load_project_from_zip(project_zip, main_script)
+        elif py_file and py_file.filename:
+            filename = Path(py_file.filename).name
+            if not filename.lower().endswith(".py"):
+                return jsonify({"error": ".py ファイルのみ対応しています。"}), 400
+
+            source = py_file.read(MAX_SOURCE_BYTES + 1)
+            if len(source) > MAX_SOURCE_BYTES:
+                return jsonify({"error": "ファイルサイズ上限(1MB)を超えています。"}), 400
+            if not source:
+                return jsonify({"error": "空ファイルは変換できません。"}), 400
+
+            base_name = Path(filename).stem
+            files = [(f"src/{filename}", source)]
+            entry = f"src/{filename}"
+        elif github_url:
+            filename, source = _read_source_from_url(github_url)
+            base_name = Path(filename).stem
+            files = [(f"src/{filename}", source)]
+            entry = f"src/{filename}"
+        else:
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "project_zip / py_file / github_url のいずれかを指定してください。"
+                        )
+                    }
+                ),
+                400,
+            )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    zip_buffer = _make_output_zip(base_name, files, entry)
     return send_file(
         zip_buffer,
         mimetype="application/zip",

@@ -13,7 +13,7 @@ body {
 }
 
 .container {
-  max-width: 760px;
+  max-width: 820px;
   margin: 48px auto;
   background: #ffffff;
   padding: 28px;
@@ -54,6 +54,18 @@ button:disabled {
 .result {
   margin-top: 18px;
   font-weight: 600;
+}
+
+.or {
+  font-size: 14px;
+  color: #475569;
+  margin-top: 4px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
 }
 
 code {

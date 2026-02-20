@@ -1,63 +1,79 @@
-# HOWTO: ブラウザで .py を変換してダウンロードする
-
-この手順書は、現在の実装（MVP）に合わせた実行方法です。
+# HOWTO: フォルダ依存ありPythonを変換して動かす
 
 ## 0. ゴール
 
-- Docker 上で変換ツールを起動する
-- ブラウザで `.py` を選択して変換を開始する
-- 生成 ZIP をダウンロードする
+- Docker 上で変換ツールを起動
+- ZIPまたは `.py` を変換
+- 出力ZIPを別ラズパイ/Windowsで実行
 
-## 1. 事前確認
-
-```bash
-docker --version
-docker compose version
-```
-
-## 2. プロジェクトへ移動
+## 1. 起動
 
 ```bash
 cd /home/pi/Desktop/docker1
-```
-
-## 3. 起動
-
-```bash
 docker compose up --build
 ```
 
-## 4. ブラウザ操作
+## 2. ブラウザ操作
 
 1. `http://localhost:5000` を開く
-2. `Pythonファイル (.py)` で変換対象ファイルを選択
-3. `変換開始` を押す
-4. `*_converted.zip` がダウンロードされる
+2. 次のどれかを指定
+   - `プロジェクトZIP（推奨）`
+   - `Pythonファイル (.py)`
+   - `GitHub .py URL`
+3. ZIPを使う場合、必要に応じて `main_script` を入力（例: `src/main.py`）
+4. `変換開始`
+5. `*_converted.zip` をダウンロード
 
-## 5. ZIP の中身
+## 3. ZIP入力の作り方（重要）
 
-- `src/<元ファイル名>.py`
-- `run.sh` (Raspberry Pi / Linux 実行用)
-- `run.bat` (Windows 実行用)
-- `build_exe.bat` (Windows で EXE 生成)
-- `README_CONVERTED.md`
+- プロジェクトのルートフォルダごとZIP化
+- 相対パスで参照するデータファイルや設定ファイルも含める
 
-## 6. 停止
+例:
 
-```bash
-docker compose down
+```text
+my_app/
+├── src/
+│   └── main.py
+├── data/
+│   └── config.json
+└── requirements.txt
 ```
 
-## 7. よくあるエラー
+この場合、`main_script` は `src/main.py`
 
-- `.py ファイルのみ対応しています。`
-  - `.py` 以外を選択しています
-- `空ファイルは変換できません。`
-  - 0バイトファイルです
-- ダウンロードされない
-  - ブラウザのダウンロード制限やポップアップ制御を確認してください
+## 4. 変換後の実行
 
-## 8. 補足
+### Raspberry Pi / Linux
 
-- 現状は「実行パッケージを生成する」機能です。
-- 本格的な自動UI変換は次フェーズで仕様化して実装します。
+```bash
+cd <展開先>/<変換名>
+bash run.sh
+```
+
+### Windows
+
+```bat
+cd <展開先>\<変換名>
+run.bat
+```
+
+### Windows exe生成
+
+```bat
+build_exe.bat
+```
+
+## 5. よくあるエラー
+
+- `main_script がZIP内に見つかりません`
+  - パス指定が違います（`/` 区切りで入力）
+- `起動対象の .py を特定できません`
+  - `.py` が複数あります。`main_script` を指定してください
+- `ZIP内に .py ファイルが見つかりません`
+  - ZIP内容を確認してください
+
+## 6. 補足
+
+- 入力優先順位は `project_zip > py_file > github_url`
+- 現状は実行パッケージ生成まで。自動UI変換は次フェーズです。

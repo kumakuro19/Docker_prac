@@ -10,14 +10,36 @@
     <main class="container">
       <h1>Python 変換ツール (MVP)</h1>
       <p>
-        ブラウザから <code>.py</code> ファイルを選択し、変換開始を押すと
-        Raspberry Pi / Windows 向けの実行パッケージを ZIP で生成します。
+        フォルダ依存のあるアプリは <code>.zip</code> を選択してください。<br />
+        単体ファイルは <code>.py</code> 選択か GitHub の <code>.py</code> URL でも変換できます。
       </p>
 
       <form id="convertForm">
-        <label for="pyFile">Pythonファイル (.py)</label>
-        <input id="pyFile" name="py_file" type="file" accept=".py" required />
+        <label for="projectZip">プロジェクトZIP（推奨）</label>
+        <input id="projectZip" name="project_zip" type="file" accept=".zip" />
 
+        <label for="mainScript">起動対象 main_script（任意）</label>
+        <input
+          id="mainScript"
+          name="main_script"
+          type="text"
+          placeholder="例: src/main.py"
+        />
+
+        <div class="or">または</div>
+
+        <label for="pyFile">Pythonファイル (.py)</label>
+        <input id="pyFile" name="py_file" type="file" accept=".py" />
+
+        <label for="githubUrl">GitHub .py URL</label>
+        <input
+          id="githubUrl"
+          name="github_url"
+          type="url"
+          placeholder="https://github.com/<user>/<repo>/blob/<branch>/path/to/file.py"
+        />
+
+        <p class="hint">優先順位: project_zip > py_file > github_url</p>
         <button id="convertBtn" type="submit">変換開始</button>
       </form>
 
