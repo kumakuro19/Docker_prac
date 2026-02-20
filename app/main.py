@@ -1,5 +1,7 @@
 import io
+import os
 import posixpath
+import tempfile
 import zipfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -10,7 +12,7 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
 MAX_SOURCE_BYTES = 1024 * 1024
-MAX_ZIP_BYTES = 20 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 
 
 @app.get("/")
@@ -80,7 +82,7 @@ def _safe_member_name(name: str) -> str:
 def _infer_entry_from_project(entries: list[str]) -> str:
     py_files = [p for p in entries if p.lower().endswith(".py")]
     if not py_files:
-        raise ValueError("ZIP内に .py ファイルが見つかりません。")
+        raise ValueError("アーカイブ内に .py ファイルが見つかりません。")
     if len(py_files) == 1:
         return py_files[0]
     if "main.py" in py_files:
@@ -92,20 +94,7 @@ def _infer_entry_from_project(entries: list[str]) -> str:
     )
 
 
-def _load_project_from_zip(project_zip, main_script: str):
-    if not project_zip or not project_zip.filename:
-        raise ValueError("ZIPファイルを選択してください。")
-
-    zip_name = Path(project_zip.filename).name
-    if not zip_name.lower().endswith(".zip"):
-        raise ValueError("プロジェクトは .zip 形式でアップロードしてください。")
-
-    payload = project_zip.read(MAX_ZIP_BYTES + 1)
-    if len(payload) > MAX_ZIP_BYTES:
-        raise ValueError("ZIPサイズ上限(20MB)を超えています。")
-    if not payload:
-        raise ValueError("空のZIPは変換できません。")
-
+def _read_files_from_zip(payload: bytes):
     try:
         source_zip = zipfile.ZipFile(io.BytesIO(payload), "r")
     except zipfile.BadZipFile as exc:
@@ -120,21 +109,69 @@ def _load_project_from_zip(project_zip, main_script: str):
             if not safe_name:
                 continue
             files.append((safe_name, source_zip.read(member)))
+    return files
+
+
+def _read_files_from_7z(payload: bytes):
+    try:
+        import py7zr
+    except ImportError as exc:
+        raise ValueError(".7z 対応ライブラリ(py7zr)が未インストールです。") from exc
+
+    files: list[tuple[str, bytes]] = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with py7zr.SevenZipFile(io.BytesIO(payload), mode="r") as source_7z:
+                source_7z.extractall(path=tmp_dir)
+
+            for root, _, filenames in os.walk(tmp_dir):
+                for filename in filenames:
+                    full_path = Path(root) / filename
+                    rel_path = full_path.relative_to(tmp_dir).as_posix()
+                    safe_name = _safe_member_name(rel_path)
+                    if not safe_name:
+                        continue
+                    files.append((safe_name, full_path.read_bytes()))
+    except Exception as exc:
+        raise ValueError("7zファイルの展開に失敗しました。") from exc
+
+    return files
+
+
+def _load_project_from_archive(project_zip, main_script: str):
+    if not project_zip or not project_zip.filename:
+        raise ValueError("アーカイブファイルを選択してください。")
+
+    archive_name = Path(project_zip.filename).name
+    suffix = Path(archive_name).suffix.lower()
+    if suffix not in {".zip", ".7z"}:
+        raise ValueError("プロジェクトは .zip または .7z 形式でアップロードしてください。")
+
+    payload = project_zip.read(MAX_ARCHIVE_BYTES + 1)
+    if len(payload) > MAX_ARCHIVE_BYTES:
+        raise ValueError("アーカイブサイズ上限(20MB)を超えています。")
+    if not payload:
+        raise ValueError("空のアーカイブは変換できません。")
+
+    if suffix == ".zip":
+        files = _read_files_from_zip(payload)
+    else:
+        files = _read_files_from_7z(payload)
 
     if not files:
-        raise ValueError("ZIP内に有効なファイルが見つかりません。")
+        raise ValueError("アーカイブ内に有効なファイルが見つかりません。")
 
     all_paths = [p for p, _ in files]
     entry = main_script.strip().replace("\\", "/").strip("/") if main_script else ""
     if entry:
         if entry not in all_paths:
-            raise ValueError(f"main_script がZIP内に見つかりません: {entry}")
+            raise ValueError(f"main_script がアーカイブ内に見つかりません: {entry}")
         if not entry.lower().endswith(".py"):
             raise ValueError("main_script には .py ファイルを指定してください。")
     else:
         entry = _infer_entry_from_project(all_paths)
 
-    base_name = Path(zip_name).stem
+    base_name = Path(archive_name).stem
     return base_name, files, entry
 
 
@@ -240,7 +277,7 @@ def convert():
 
     try:
         if project_zip and project_zip.filename:
-            base_name, files, entry = _load_project_from_zip(project_zip, main_script)
+            base_name, files, entry = _load_project_from_archive(project_zip, main_script)
         elif py_file and py_file.filename:
             filename = Path(py_file.filename).name
             if not filename.lower().endswith(".py"):

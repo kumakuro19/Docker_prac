@@ -15,7 +15,7 @@ form.addEventListener('submit', async (event) => {
   const mainScript = (mainScriptInput.value || '').trim();
 
   if (!projectZip && !pyFile && !githubUrl) {
-    result.textContent = 'project.zip、.py、GitHub URL のいずれかを指定してください。';
+    result.textContent = 'project archive(.zip/.7z)、.py、GitHub URL のいずれかを指定してください。';
     return;
   }
 

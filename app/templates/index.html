@@ -10,13 +10,13 @@
     <main class="container">
       <h1>Python 変換ツール (MVP)</h1>
       <p>
-        フォルダ依存のあるアプリは <code>.zip</code> を選択してください。<br />
+        フォルダ依存のあるアプリは <code>.zip</code> または <code>.7z</code> を選択してください。<br />
         単体ファイルは <code>.py</code> 選択か GitHub の <code>.py</code> URL でも変換できます。
       </p>
 
       <form id="convertForm">
-        <label for="projectZip">プロジェクトZIP（推奨）</label>
-        <input id="projectZip" name="project_zip" type="file" accept=".zip" />
+        <label for="projectZip">プロジェクトアーカイブ（.zip / .7z 推奨）</label>
+        <input id="projectZip" name="project_zip" type="file" accept=".zip,.7z" />
 
         <label for="mainScript">起動対象 main_script（任意）</label>
         <input

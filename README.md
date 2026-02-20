@@ -12,7 +12,7 @@ Docker コンテナで `Python(Flask) + HTML/JS` を動かす、学習用の最�
 
 - `GET /` で変換UIを表示
 - 次のどれかで変換開始
-  - `project_zip`（フォルダ一式, 推奨）
+  - `project_zip`（フォルダ一式 `.zip` / `.7z`, 推奨）
   - `py_file`（単体 `.py`）
   - `github_url`（GitHub の `.py` URL）
 - `POST /api/convert` で変換パッケージ（ZIP）を生成
@@ -28,7 +28,7 @@ Docker コンテナで `Python(Flask) + HTML/JS` を動かす、学習用の最�
 
 ## フォルダ依存対応
 
-- フォルダ依存があるアプリは、必ずプロジェクト全体を `.zip` で入力してください。
+- フォルダ依存があるアプリは、プロジェクト全体を `.zip` または `.7z` で入力してください。
 - `main_script`（例: `src/main.py`）を指定すると、そのファイルを起動対象にします。
 - `main_script` 未指定時は自動判定します。
   - `.py` が1つだけならそれを採用
@@ -61,7 +61,7 @@ docker compose up --build
 ### `POST /api/convert`
 
 - FormData:
-  - `project_zip` (`.zip`, 任意)
+  - `project_zip` (`.zip` / `.7z`, 任意)
   - `main_script` (例: `src/main.py`, 任意)
   - `py_file` (`.py`, 任意)
   - `github_url` (GitHub `.py` URL, 任意)
@@ -70,7 +70,7 @@ docker compose up --build
   - 優先順位: `project_zip > py_file > github_url`
 - 上限:
   - `.py`: 1MB
-  - `.zip`: 20MB
+  - `.zip` / `.7z`: 20MB
 
 ## 注意
 
