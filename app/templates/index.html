@@ -3,20 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Docker Flask Practice</title>
+    <title>Python Converter</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
     <main class="container">
-      <h1>Docker + Python + HTML/JS 練習</h1>
-      <p>名前を入力して Python API にリクエストします。</p>
+      <h1>Python 変換ツール (MVP)</h1>
+      <p>
+        ブラウザから <code>.py</code> ファイルを選択し、変換開始を押すと
+        Raspberry Pi / Windows 向けの実行パッケージを ZIP で生成します。
+      </p>
 
-      <div class="row">
-        <input id="nameInput" type="text" placeholder="例: Taro" />
-        <button id="helloBtn">送信</button>
-      </div>
+      <form id="convertForm">
+        <label for="pyFile">Pythonファイル (.py)</label>
+        <input id="pyFile" name="py_file" type="file" accept=".py" required />
 
-      <p id="result">ここに結果が表示されます</p>
+        <button id="convertBtn" type="submit">変換開始</button>
+      </form>
+
+      <p id="result" class="result">ここに結果が表示されます。</p>
     </main>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

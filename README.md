@@ -6,29 +6,35 @@ Docker コンテナで `Python(Flask) + HTML/JS` を動かす、学習用の最�
 
 - Docker を使ったローカル開発の基本を学ぶ
 - Python(Flask) で API を作る流れを体験する
-- HTML/JS から API を呼び出すフロント連携を理解する
+- ブラウザ操作で `.py` ファイルを変換し、生成物をダウンロードする
 
-## できること
+## できること（現在）
 
-- `GET /` で画面を表示
-- 画面のボタン押下で `GET /api/hello?name=...` を実行
-- API の JSON レスポンスを画面に表示
+- `GET /` で変換UIを表示
+- ブラウザで `.py` ファイルを選択して `変換開始`
+- `POST /api/convert` で変換パッケージ（ZIP）を生成
+- ZIP に以下を含めてダウンロード
+  - 元の Python ファイル
+  - Raspberry Pi 向け `run.sh`
+  - Windows 向け `run.bat`
+  - Windows で EXE 生成する `build_exe.bat`
 
 ## プロジェクト構成
 
 ```text
 .
 ├── app
-│   ├── main.py                 # Flaskアプリ本体（画面配信 + API）
+│   ├── main.py                 # Flaskアプリ本体（画面配信 + 変換API）
 │   ├── templates
-│   │   └── index.html          # 画面HTML
+│   │   └── index.html          # 変換画面
 │   └── static
-│       ├── script.js           # API呼び出し処理
+│       ├── script.js           # アップロード/ダウンロード処理
 │       └── style.css           # 画面スタイル
 ├── Dockerfile                  # Python実行イメージ
 ├── docker-compose.yml          # コンテナ起動設定
 ├── requirements.txt            # Python依存関係
-└── .dockerignore               # Dockerビルド除外設定
+├── .dockerignore               # Dockerビルド除外設定
+└── .gitignore                  # Git除外設定
 ```
 
 ## 前提環境
@@ -45,13 +51,12 @@ cd /home/pi/Desktop/docker1
 docker compose up --build
 ```
 
-初回はイメージ作成のため少し時間がかかります。
-
 ### 2. ブラウザで確認
 
 - `http://localhost:5000` を開く
-- 名前を入力して `送信` ボタンを押す
-- 画面下に `Hello, <入力した名前>!` が表示される
+- `.py` ファイルを選択
+- `変換開始` を押す
+- 生成された `*_converted.zip` がダウンロードされる
 
 ### 3. 停止
 
@@ -59,29 +64,17 @@ docker compose up --build
 docker compose down
 ```
 
-### 4. ログ確認（必要時）
-
-```bash
-docker compose logs -f
-```
-
-## 開発メモ
-
-- `docker-compose.yml` で `./app:/app/app` をマウントしているため、`app` 配下の変更はコンテナに即反映されます。
-- `main.py` は `debug=True` なので、Pythonコード変更時に自動リロードされます。
-
 ## API 仕様（現状）
 
-### `GET /api/hello`
+### `POST /api/convert`
 
-- Query:
-  - `name` (任意)
-- Response (JSON):
+- FormData:
+  - `py_file` (`.py` ファイル, 必須)
+- Response:
+  - 成功時: ZIP ファイル
+  - 失敗時: JSON エラー
 
-```json
-{
-  "message": "Hello, Taro!"
-}
-```
+## 注意
 
-`name` が未指定または空の場合は `world` が使われます。
+- 現状は「実行用パッケージ生成」の MVP です。
+- `.py` の内容を解析して自動でブラウザUIへ完全変換する機能は未実装です。

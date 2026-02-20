@@ -1,103 +1,63 @@
-# HOWTO: DockerでPython + HTML/JSアプリを動かす手順
+# HOWTO: ブラウザで .py を変換してダウンロードする
 
-このファイルは、はじめて Docker を触る方向けの実行手順書です。  
-`README.md` よりも手順を細かく記載しています。
+この手順書は、現在の実装（MVP）に合わせた実行方法です。
 
 ## 0. ゴール
 
-- Docker コンテナ上で Flask アプリを起動する
-- ブラウザから画面を開く
-- ボタン操作で Python API と通信できることを確認する
+- Docker 上で変換ツールを起動する
+- ブラウザで `.py` を選択して変換を開始する
+- 生成 ZIP をダウンロードする
 
 ## 1. 事前確認
-
-ターミナルで次を実行して、Docker が使えるか確認します。
 
 ```bash
 docker --version
 docker compose version
 ```
 
-どちらもバージョンが表示されれば OK です。
-
-## 2. プロジェクトフォルダへ移動
+## 2. プロジェクトへ移動
 
 ```bash
 cd /home/pi/Desktop/docker1
 ```
 
-念のため、ファイルがあるか確認します。
-
-```bash
-ls
-```
-
-`Dockerfile` や `docker-compose.yml` が見えれば OK です。
-
-## 3. コンテナを起動
+## 3. 起動
 
 ```bash
 docker compose up --build
 ```
 
-- `--build` は、イメージを作り直して起動するオプションです。
-- 初回は依存関係のインストールがあるため時間がかかります。
+## 4. ブラウザ操作
 
-起動に成功すると、ログに Flask サーバーの待ち受け情報が表示されます。
+1. `http://localhost:5000` を開く
+2. `Pythonファイル (.py)` で変換対象ファイルを選択
+3. `変換開始` を押す
+4. `*_converted.zip` がダウンロードされる
 
-## 4. ブラウザで動作確認
+## 5. ZIP の中身
 
-ブラウザで次を開きます。
+- `src/<元ファイル名>.py`
+- `run.sh` (Raspberry Pi / Linux 実行用)
+- `run.bat` (Windows 実行用)
+- `build_exe.bat` (Windows で EXE 生成)
+- `README_CONVERTED.md`
 
-- `http://localhost:5000`
-
-画面が表示されたら以下を確認します。
-
-1. 入力欄に名前（例: `Taro`）を入れる
-2. `送信` ボタンを押す
-3. `Hello, Taro!` と表示される
-
-## 5. 停止方法
-
-起動中ターミナルで `Ctrl + C` を押して停止します。  
-その後、別途コンテナを片付ける場合は次を実行します。
+## 6. 停止
 
 ```bash
 docker compose down
 ```
 
-## 6. よく使うコマンド
+## 7. よくあるエラー
 
-### バックグラウンド起動
+- `.py ファイルのみ対応しています。`
+  - `.py` 以外を選択しています
+- `空ファイルは変換できません。`
+  - 0バイトファイルです
+- ダウンロードされない
+  - ブラウザのダウンロード制限やポップアップ制御を確認してください
 
-```bash
-docker compose up -d --build
-```
+## 8. 補足
 
-### ログ確認
-
-```bash
-docker compose logs -f
-```
-
-### 停止
-
-```bash
-docker compose down
-```
-
-## 7. つまずいたときの確認ポイント
-
-- `http://localhost:5000` が開かない  
-  -> `docker compose logs -f` でエラーを確認
-- `port is already allocated` が出る  
-  -> 他プロセスが `5000` を使っている可能性あり。`docker-compose.yml` の左側ポートを変更
-- 変更が反映されない  
-  -> `docker compose down` 後に `docker compose up --build` を実行
-
-## 8. 次の練習案
-
-1. API を `GET` から `POST` に変更
-2. 入力チェック（空文字・長すぎる文字など）を追加
-3. SQLite を追加して履歴保存
-4. テスト（pytest）を追加
+- 現状は「実行パッケージを生成する」機能です。
+- 本格的な自動UI変換は次フェーズで仕様化して実装します。
